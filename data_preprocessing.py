@@ -243,38 +243,32 @@ def subdividir_por_municipios(
 # ESTANDARIZAR ATRIBUTOS
 # ============================================
 
-import geopandas as gpd
-
-def estandarizar_atributos(
-    gdf,
-    reglas,
-    iniciar_id=1
-):
-    """
-    Estandariza atributos de una capa según reglas definidas.
-    """
-
+def estandarizar_atributos(gdf, reglas, iniciar_id=1):
     gdf = gdf.copy()
-
     for campo_nuevo, regla in reglas.items():
-
+        # --- CASO 1: ID ---
         if regla.get("tipo") == "id":
             gdf[campo_nuevo] = range(iniciar_id, iniciar_id + len(gdf))
 
+        # --- CASO 2: ÁREA (Novedad) ---
+        elif regla.get("tipo") == "area_ha":
+            # Calculamos área en Ha (Area m2 / 10,000)
+            gdf[campo_nuevo] = gdf.geometry.area / 10000
+
+        # --- CASO 3: TRANSFORMACIONES (Novedad para ANIO/MES) ---
+        elif "transformacion" in regla and callable(regla["transformacion"]):
+            gdf[campo_nuevo] = gdf.apply(regla["transformacion"], axis=1)
+
+        # --- CASO 4: DICCIONARIO ---
         elif "diccionario" in regla and "desde" in regla:
             gdf[campo_nuevo] = gdf[regla["desde"]].map(regla["diccionario"])
 
+        # --- CASO 5: COPIA DIRECTA ---
         elif "desde" in regla:
-            gdf[campo_nuevo] = (
-                gdf[regla["desde"]] if regla["desde"] in gdf.columns else None
-            )
-
-        elif "valor_fijo" in regla:
-            gdf[campo_nuevo] = regla["valor_fijo"]
+            gdf[campo_nuevo] = gdf[regla["desde"]] if regla["desde"] in gdf.columns else None
 
         else:
             gdf[campo_nuevo] = None
-
     return gdf
 
 
@@ -430,4 +424,26 @@ def vectorizar_valor_pixel_por_anio(
 
     return gdf
 
+
+
+# ============================================
+# DE POLIGONO A PUNTO | CENTROIDE
+# ============================================
+
+def poligonos_a_puntos(gdf, metodo="representative"):
+    """
+    Convierte un GeoDataFrame de polígonos a puntos.
+    
+    metodo: 'centroid' o 'representative' (default)
+    """
+    gdf_puntos = gdf.copy()
+    
+    if metodo == "centroid":
+        # Centro geométrico (puede caer fuera en formas cóncavas)
+        gdf_puntos.geometry = gdf.geometry.centroid
+    else:
+        # Punto garantizado dentro del polígono
+        gdf_puntos.geometry = gdf.geometry.representative_point()
+        
+    return gdf_puntos
 
